@@ -1,0 +1,55 @@
+name: Build and Push Docker Image to ACR
+
+on:
+  push:
+    branches:
+      - main  # Trigger the workflow on push to the main branch
+  pull_request:
+    branches:
+      - main
+env:
+  app_name: telegram-forwarder-bot  # Define the application name as an environment variable
+  docker_repo: ${{ secrets.DOCKER_REPO }}
+
+jobs:
+  build:
+    name: Build and push docker image
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build the Docker image
+      run: |
+        docker build \
+          --tag "${{ env.docker_repo }}:${{ env.app_name }}-${{ github.run_number }}" \
+          --tag "${{ env.docker_repo }}:${{ env.app_name }}-latest" \
+          --build-arg STORAGE_ACCOUNT_NAME="${{ secrets.STORAGE_ACCOUNT_NAME }}" \
+          --build-arg STORAGE_ACCOUNT_KEY="${{ secrets.STORAGE_ACCOUNT_KEY }}" \
+          --build-arg FILE_SHARE_NAME="${{ secrets.FILE_SHARE_NAME }}" \
+          --build-arg API_ID="${{ secrets.API_ID }}" \
+          --build-arg API_HASH="${{ secrets.API_HASH }}" \
+          --build-arg CHAT_ID="${{ secrets.CHAT_ID }}" \
+          --build-arg CHANNEL_ID="${{ secrets.CHANNEL_ID }}" .
+    - name: Docker login
+      run: docker login -u ${{ secrets.DOCKER_LOGIN }} -p ${{ secrets.DOCKER_TOKEN }}
+    - name: Push the Docker image
+      run: |
+          docker push ${{ env.docker_repo }}:${{ env.app_name }}-${{ github.run_number }}
+          docker push ${{ env.docker_repo }}:${{ env.app_name }}-latest
+  deploy:
+    name: deploy using ArgoCD
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: deploy to cluster
+      run: |
+        mkdir argo-deploy && cd argo-deploy
+        git clone --single-branch https://${{ secrets.ARGO_TOKEN_USER }}:${{ secrets.ARGO_TOKEN_PASSWORD }}@${{ secrets.ARGO_REPO_URL }} .
+        cd ${{ env.app_name }}
+
+        yq -i '(.spec.template.spec.containers[] | select(.name == "${{ env.app_name }}") | .image) = "${{ env.docker_repo }}:${{ env.app_name }}-${{ github.run_number }}"' deployment.yaml
+
+        git config --global user.email "ci@us.er"
+        git config --global user.name "CI User"
+        git add .
+        git commit . -m "Update image tag to ${{ env.app_name }}-${{ github.run_number }}"
+        git push

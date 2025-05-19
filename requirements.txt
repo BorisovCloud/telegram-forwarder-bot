@@ -1,0 +1,15 @@
+APScheduler==3.11.0
+asyncio==3.4.3
+pyaes==1.6.1
+pyasn1==0.6.1
+python-dotenv==1.1.0
+pytz==2025.2
+rsa==4.9.1
+Telethon==1.40.0
+tzlocal==5.3.1
+
+# telethon
+# apscheduler
+# asyncio
+# python-dotenv
+# pytz
